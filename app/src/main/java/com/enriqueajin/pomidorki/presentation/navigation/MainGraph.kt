@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,7 +15,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +30,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.createGraph
 import com.enriqueajin.pomidorki.presentation.home.TimerScreenRoot
 import com.enriqueajin.pomidorki.presentation.home.TimerScreenViewModel
 import com.enriqueajin.pomidorki.presentation.pomodorosettings.PomodoroSettingsScreenRoot
@@ -44,6 +48,27 @@ private const val NAVIGATION_TRANSITION_DURATION_MILLIS = 300
 @Composable
 fun MainGraph() {
     val navController = rememberNavController()
+    val navGraph =
+        remember(navController) {
+            navController.createGraph(startDestination = Route.Timer.route) {
+                composable(route = Route.Timer.route) {
+                    TimerScreenRoot {
+                        navigateToDetail(navController) {
+                            Route.Settings.route
+                        }
+                    }
+                }
+                composable(route = Route.Tasks.route) {
+                    TasksScreenRoot()
+                }
+                composable(route = Route.Stats.route) {
+                    StatsScreen()
+                }
+                composable(route = Route.Settings.route) {
+                    PomodoroSettingsScreenRoot()
+                }
+            }
+        }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val activity = LocalContext.current as ComponentActivity
@@ -75,12 +100,25 @@ fun MainGraph() {
             Route.Settings.route -> shortBreakPickerIndicator
             else -> MaterialTheme.colorScheme.background
         }
-    val statusBarColor by
+    var previousRoute by remember { mutableStateOf(currentRoute) }
+    val routeChanged = previousRoute != currentRoute
+    val animatedStatusBarColor by
         animateColorAsState(
             targetValue = targetStatusBarColor,
-            animationSpec = tween(NAVIGATION_TRANSITION_DURATION_MILLIS),
+            animationSpec =
+                if (routeChanged) {
+                    tween(NAVIGATION_TRANSITION_DURATION_MILLIS)
+                } else {
+                    snap()
+                },
             label = "statusBarColor",
         )
+    val statusBarColor = if (routeChanged) animatedStatusBarColor else targetStatusBarColor
+    SideEffect {
+        if (animatedStatusBarColor == targetStatusBarColor) {
+            previousRoute = currentRoute
+        }
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -110,7 +148,7 @@ fun MainGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Route.Timer.route,
+            graph = navGraph,
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
                 fadeIn(animationSpec = tween(NAVIGATION_TRANSITION_DURATION_MILLIS))
@@ -124,24 +162,7 @@ fun MainGraph() {
             popExitTransition = {
                 fadeOut(animationSpec = tween(NAVIGATION_TRANSITION_DURATION_MILLIS))
             },
-        ) {
-            composable(route = Route.Timer.route) {
-                TimerScreenRoot {
-                    navigateToDetail(navController) {
-                        Route.Settings.route
-                    }
-                }
-            }
-            composable(route = Route.Tasks.route) {
-                TasksScreenRoot()
-            }
-            composable(route = Route.Stats.route) {
-                StatsScreen()
-            }
-            composable(route = Route.Settings.route) {
-                PomodoroSettingsScreenRoot()
-            }
-        }
+        )
     }
 }
 
